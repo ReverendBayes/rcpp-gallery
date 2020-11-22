@@ -20,8 +20,10 @@
  * a simple call to the STL `std::accumulate` function:
  */
 
-#include <Rcpp.h>
+#include "RcppArmadillo.h"
+#include <omp.h>
 using namespace Rcpp;
+using namespace arma;
 
 #include <algorithm>
 
@@ -61,7 +63,8 @@ double vectorSum(NumericVector x) {
  * Here's the definition of the `Sum` function object:
  *
  */
-
+// [[Rcpp::depends(RcppArmadillo)]]
+// [[Rcpp::plugins(openmp)]]
 // [[Rcpp::depends(RcppParallel)]]
 #include <RcppParallel.h>
 using namespace RcppParallel;
@@ -120,6 +123,37 @@ double parallelVectorSum(NumericVector x) {
 }
 
 /**
+ * For reference, we also test the performance of the popular Armadillo library.
+ * While Armadillo uses openMP automatically for 'expensive' computations, we need
+ * to manually use openMP for something as simple as a sum.
+ *
+ * `armasum` uses the built-in `accu` function to compute the sum, `armasum2` uses
+ * openMP.
+ *
+ * The implementation is extremely simple, and performance is comparable to RcppParallel.
+ */
+
+// [[Rcpp::export]]
+double armasum(vec const& x){
+  return(accu(x));
+}
+
+// [[Rcpp::export]]
+double armasum2(vec const& x, int cores){
+int K=x.n_elem;
+double res=0;
+omp_set_num_threads(cores);
+  
+#pragma omp parallel for schedule(static)
+  for(int k=0; k<K; k++){
+    res+=x(k);
+  }
+  
+  return(res);
+}
+
+
+/**
  * ### Benchmarks
  *
  * A comparison of the performance of the two functions shows the parallel
@@ -137,6 +171,8 @@ stopifnot(identical(vectorSum(v), parallelVectorSum(v)))
 library(rbenchmark)
 res <- benchmark(vectorSum(v),
                  parallelVectorSum(v),
+                 armasum(v),
+                 armasum2(v,cores),
                  order="relative")
 res[,1:4]
 */
